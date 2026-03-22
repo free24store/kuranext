@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KuraNext — ログイン</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="mark">Kura<span>Next</span></div>
+      <p>工事写真管理SaaS</p>
+    </div>
+
+    <div id="errMsg" style="background:#fdecea;color:var(--ng);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none;"></div>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label class="form-label">メールアドレス</label>
+        <input id="email" type="email" class="form-control" placeholder="your@email.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">パスワード</label>
+        <input id="password" type="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:12px;">
+        ログイン
+      </button>
+    </form>
+
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--paper3);">
+      <p style="font-size:12px;color:var(--ink3);text-align:center;margin-bottom:10px;">パスワードをお忘れの方</p>
+      <button onclick="sendReset()" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px;">
+        パスワードリセットメールを送る
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  // 既ログイン済みチェック
+  const session = await Auth.init();
+  if (session) redirectByRole(Auth.role());
+});
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'ログイン中...';
+  hideErr();
+
+  const email = document.getElementById('email').value;
+  const pw = document.getElementById('password').value;
+
+  const result = await Auth.login(email, pw);
+  if (result.error) {
+    showErr('メールアドレスまたはパスワードが違います');
+    btn.disabled = false;
+    btn.textContent = 'ログイン';
+    return;
+  }
+  redirectByRole(Auth.role());
+});
+
+function redirectByRole(role) {
+  if (role === 'master') location.href = 'master.html';
+  else if (role === 'admin') location.href = 'admin.html';
+  else location.href = 'staff.html';
+}
+
+async function sendReset() {
+  const email = document.getElementById('email').value;
+  if (!email) { showErr('メールアドレスを入力してください'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: location.origin + '/reset-password.html'
+  });
+  if (error) showErr(error.message);
+  else {
+    hideErr();
+    toast('パスワードリセットメールを送信しました');
+  }
+}
+
+function showErr(msg) { const el = document.getElementById('errMsg'); el.textContent = msg; el.style.display = 'block'; }
+function hideErr() { document.getElementById('errMsg').style.display = 'none'; }
+</script>
+</body>
+</html>

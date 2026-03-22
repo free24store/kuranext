@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KuraNext — マスター管理</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><div class="loading-text">読み込み中...</div></div>
+
+<div class="app-layout" id="appLayout" style="display:none;">
+<aside class="sidebar" id="sidebar" style="background:linear-gradient(180deg,#0f1923,#1a2a3a);">
+  <div class="sidebar-logo"><div class="logo-mark">Kura<span>Next</span></div><div class="logo-sub" style="color:#e8c96a;">⚡ MASTER CONSOLE</div></div>
+  <div class="sidebar-role" style="color:#e8c96a;">MASTER ADMIN</div>
+  <nav>
+    <div class="nav-item active" onclick="showPage('overview')" id="nav-overview"><span class="nav-icon">📊</span>全社オーバービュー</div>
+    <div class="nav-item" onclick="showPage('tenants')" id="nav-tenants"><span class="nav-icon">🏢</span>テナント管理</div>
+    <div class="nav-item" onclick="showPage('users')" id="nav-users"><span class="nav-icon">👥</span>全ユーザー</div>
+    <div class="nav-item" onclick="showPage('photos')" id="nav-photos"><span class="nav-icon">🖼</span>全写真データ</div>
+    <div class="nav-item" onclick="showPage('billing')" id="nav-billing"><span class="nav-icon">💳</span>請求・プラン</div>
+    <div class="nav-item" onclick="showPage('system')" id="nav-system"><span class="nav-icon">🔧</span>システム設定</div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info"><div class="user-avatar" style="background:linear-gradient(135deg,#e8c96a,#d4a017);">👑</div><div><div class="user-name">マスター管理者</div><div class="user-email" style="color:#e8c96a;font-size:10px;">SYSTEM ADMIN</div></div></div>
+    <button class="logout-btn" onclick="Auth.logout()">ログアウト</button>
+  </div>
+</aside>
+<div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<div class="main-area">
+<div class="topbar" style="background:#0f1923;border-bottom-color:#2d3f50;">
+  <div style="display:flex;align-items:center;gap:12px;"><button class="menu-btn" onclick="openSidebar()" style="color:#e8c96a;">☰</button><div class="topbar-title" id="pageTitle" style="color:#e8c96a;">全社オーバービュー</div></div>
+  <span class="badge badge-master">MASTER</span>
+</div>
+<div class="content">
+
+<div class="page-section active" id="page-overview">
+  <div class="stats-grid" id="masterStats"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="dash-grid">
+    <div class="card"><div class="card-header"><h2>テナント別サマリー</h2></div><div class="table-wrap"><table><thead><tr><th>会社名</th><th>プラン</th><th>写真数</th><th>ユーザー</th><th>MRR</th></tr></thead><tbody id="overviewTenants"></tbody></table></div></div>
+    <div class="card"><div class="card-header"><h2>プラン分布</h2></div><div class="card-body" id="planDist"></div></div>
+  </div>
+</div>
+
+<div class="page-section" id="page-tenants">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;"><button class="btn btn-primary" onclick="openTenantModal()">＋ テナント追加</button></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>会社名</th><th>プラン</th><th>状態</th><th>登録日</th><th>操作</th></tr></thead><tbody id="tenantsTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-users">
+  <div style="margin-bottom:16px;"><input class="form-control" id="userSearch" placeholder="🔍 名前・メール" oninput="renderAllUsers()" style="max-width:280px;"></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>名前</th><th>権限</th><th>テナント</th><th>時給</th><th>操作</th></tr></thead><tbody id="allUsersTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-photos">
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+    <select class="form-control" id="masterPhotoTenant" onchange="renderMasterPhotos()" style="width:190px;"><option value="">すべてのテナント</option></select>
+    <div id="masterPhotoCount" style="margin-left:auto;font-size:13px;color:var(--ink3);"></div>
+  </div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>ファイル名</th><th>テナント</th><th>AIタグ</th><th>状態</th><th>日時</th></tr></thead><tbody id="masterPhotosTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-billing">
+  <div class="stats-grid" id="billingStats"></div>
+  <div class="card"><div class="card-header"><h2>テナント別請求</h2></div>
+  <div class="table-wrap"><table><thead><tr><th>会社名</th><th>プラン</th><th>月額</th><th>状態</th><th>変更</th></tr></thead><tbody id="billingTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-system">
+  <div class="card" style="max-width:560px;">
+    <div class="card-header"><h2>🔑 Anthropic APIキー（グローバル）</h2></div>
+    <div class="card-body">
+      <div class="form-group"><label class="form-label">APIキー</label><input class="form-control" id="masterApiKey" type="password" placeholder="sk-ant-api..."><div style="font-size:11px;color:var(--ink3);margin-top:4px;">このブラウザのlocalStorageに保存されます。</div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveMasterApiKey()">保存</button>
+        <button class="btn btn-secondary" onclick="testApiKey()">🔌 接続テスト</button>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px;margin-top:16px;">
+    <div class="card-header"><h2>📋 環境情報</h2></div>
+    <div class="card-body">
+      <div style="font-size:13px;margin-bottom:12px;">Supabase接続先：<code style="background:var(--paper2);padding:2px 6px;border-radius:4px;font-family:'DM Mono',monospace;">${SUPABASE_URL}</code></div>
+      <div id="systemInfo" style="font-size:12px;color:var(--ink3);"></div>
+    </div>
+  </div>
+</div>
+
+</div></div></div>
+
+<!-- テナントモーダル -->
+<div class="modal-backdrop" id="tenantModal"><div class="modal">
+  <div class="modal-header"><h3 id="tenantModalTitle">テナント追加</h3><button class="modal-close" onclick="closeModal('tenantModal')">✕</button></div>
+  <div class="modal-body">
+    <div class="form-group"><label class="form-label">会社名 *</label><input class="form-control" id="tName"></div>
+    <div class="form-group"><label class="form-label">プラン</label><select class="form-control" id="tPlan"><option value="free">無料</option><option value="starter">スターター ¥980/月</option><option value="pro">プロ ¥2,480/月</option><option value="team">チーム ¥1,980/ユーザー/月</option></select></div>
+    <div class="form-group"><label class="form-label">状態</label><select class="form-control" id="tStatus"><option value="active">有効</option><option value="suspended">停止</option></select></div>
+    <div id="tAdminSection"><hr style="border:none;border-top:1px solid var(--paper2);margin:8px 0 16px;"><div style="font-size:12px;font-weight:700;margin-bottom:10px;color:var(--ink2);">初期管理者アカウント（新規時のみ）</div><div class="form-group"><label class="form-label">管理者名</label><input class="form-control" id="tAdminName"></div><div class="form-group"><label class="form-label">メール</label><input class="form-control" id="tAdminEmail" type="email"></div></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('tenantModal')">キャンセル</button><button class="btn btn-primary" onclick="saveTenant()">保存</button></div>
+</div></div>
+
+<script>
+let allTenants = [], allUsers = [], allPhotos = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const ok = await Auth.requireInit(['master']);
+  if (!ok) return;
+
+  // 全データ取得
+  allTenants = await DB.getAllTenants();
+  allUsers   = await DB.getAllProfiles();
+  allPhotos  = await DB.getPhotos(null); // masterはRLSで全件取れる
+
+  document.getElementById('loadingOverlay').style.display = 'none';
+  document.getElementById('appLayout').style.display = 'flex';
+  renderOverview();
+});
+
+function showPage(name) {
+  document.querySelectorAll('.page-section').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  const t={overview:'全社オーバービュー',tenants:'テナント管理',users:'全ユーザー',photos:'全写真データ',billing:'請求・プラン管理',system:'システム設定'};
+  document.getElementById('pageTitle').textContent = t[name]||'';
+  const r={overview:renderOverview,tenants:renderTenants,users:renderAllUsers,photos:renderMasterPhotos,billing:renderBilling,system:renderSystem};
+  if(r[name])r[name]();
+  closeSidebar();
+}
+
+const pp = {free:0, starter:980, pro:2480, team:1980};
+
+function renderOverview() {
+  const mrr = allTenants.reduce((s,t)=>s+(pp[t.plan]||0),0);
+  document.getElementById('masterStats').innerHTML=`<div class="stat-card accent"><div class="stat-label">総テナント数</div><div class="stat-value">${allTenants.length}</div></div><div class="stat-card"><div class="stat-label">総ユーザー数</div><div class="stat-value">${allUsers.length}</div></div><div class="stat-card"><div class="stat-label">総写真数</div><div class="stat-value">${allPhotos.length}</div></div><div class="stat-card"><div class="stat-label">MRR</div><div class="stat-value">¥${mrr.toLocaleString()}</div></div>`;
+  document.getElementById('overviewTenants').innerHTML=allTenants.map(t=>`<tr><td style="font-weight:500;">${t.name}</td><td><span class="badge badge-${t.plan}">${t.plan.toUpperCase()}</span></td><td style="font-family:'DM Mono',monospace;">${allPhotos.filter(p=>p.tenant_id===t.id).length}</td><td style="font-family:'DM Mono',monospace;">${allUsers.filter(u=>u.tenant_id===t.id).length}</td><td style="font-family:'DM Mono',monospace;">¥${(pp[t.plan]||0).toLocaleString()}</td></tr>`).join('');
+  const pc=allTenants.reduce((a,t)=>{a[t.plan]=(a[t.plan]||0)+1;return a;},{});
+  document.getElementById('planDist').innerHTML=Object.entries({free:'無料',starter:'スターター',pro:'プロ',team:'チーム'}).map(([k,l])=>{const c=pc[k]||0;const p=allTenants.length?(c/allTenants.length*100).toFixed(0):0;return`<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span><span class="badge badge-${k}">${l}</span></span><span style="color:var(--ink3);">${c}社 (${p}%)</span></div><div class="progress-bar"><div class="progress-fill" style="width:${p}%;"></div></div></div>`;}).join('');
+}
+
+function renderTenants() {
+  document.getElementById('tenantsTable').innerHTML=allTenants.map(t=>`<tr><td style="font-weight:500;">${t.name}</td><td><span class="badge badge-${t.plan}">${t.plan.toUpperCase()}</span></td><td><span class="badge badge-${t.status==='active'?'active':'ng'}">${t.status==='active'?'有効':'停止'}</span></td><td style="font-size:12px;">${formatDate(t.created_at)}</td><td><button class="btn btn-sm btn-secondary" onclick="editTenant('${t.id}')">編集</button> <button class="btn btn-sm btn-danger" onclick="deleteTenant('${t.id}')">削除</button></td></tr>`).join('');
+}
+
+let editingTenantId = null;
+function openTenantModal(id) {
+  editingTenantId = id || null;
+  const s = document.getElementById('tAdminSection');
+  if (id) { const t=allTenants.find(x=>x.id===id); document.getElementById('tName').value=t.name; document.getElementById('tPlan').value=t.plan; document.getElementById('tStatus').value=t.status; document.getElementById('tenantModalTitle').textContent='テナント編集'; s.style.display='none'; }
+  else { ['tName','tAdminName','tAdminEmail'].forEach(i=>document.getElementById(i).value=''); document.getElementById('tPlan').value='free'; document.getElementById('tStatus').value='active'; document.getElementById('tenantModalTitle').textContent='テナント追加'; s.style.display='block'; }
+  openModal('tenantModal');
+}
+function editTenant(id) { openTenantModal(id); }
+async function saveTenant() {
+  const name = document.getElementById('tName').value.trim(); if(!name){toast('会社名は必須です','error');return;}
+  const d = { name, plan: document.getElementById('tPlan').value, status: document.getElementById('tStatus').value };
+  if (editingTenantId) d.id = editingTenantId;
+  const saved = await DB.upsertTenant(d);
+  if (editingTenantId) { const i=allTenants.findIndex(t=>t.id===editingTenantId); if(i>=0)allTenants[i]=saved; }
+  else allTenants.push(saved);
+  closeModal('tenantModal'); renderTenants(); renderOverview(); toast('保存しました');
+}
+async function deleteTenant(id) {
+  if(!confirm('このテナントを削除しますか？関連データもすべて削除されます。'))return;
+  await DB.deleteTenant(id); allTenants=allTenants.filter(t=>t.id!==id);
+  renderTenants(); renderOverview(); toast('削除しました');
+}
+
+function renderAllUsers() {
+  const q = (document.getElementById('userSearch').value||'').toLowerCase();
+  const tMap = Object.fromEntries(allTenants.map(t=>[t.id,t.name]));
+  let users = allUsers;
+  if(q) users = users.filter(u=>u.name.toLowerCase().includes(q));
+  document.getElementById('allUsersTable').innerHTML=users.map(u=>`<tr><td style="font-weight:500;">${u.name}</td><td><span class="badge badge-${u.role==='admin'?'active':'free'}">${u.role==='admin'?'管理者':'スタッフ'}</span></td><td>${tMap[u.tenant_id]||'—'}</td><td style="font-family:'DM Mono',monospace;">${u.hourly_rate?formatMoney(u.hourly_rate)+'/h':'—'}</td><td><button class="btn btn-sm btn-danger" onclick="forceDeleteUser('${u.id}')">削除</button></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--ink3);">ユーザーがいません</td></tr>';
+}
+async function forceDeleteUser(id){if(!confirm('強制削除しますか？'))return;await DB.deleteProfile(id);allUsers=allUsers.filter(u=>u.id!==id);renderAllUsers();toast('削除しました');}
+
+function renderMasterPhotos() {
+  const tMap=Object.fromEntries(allTenants.map(t=>[t.id,t.name]));
+  const sel=document.getElementById('masterPhotoTenant'),cur=sel.value;sel.innerHTML='<option value="">すべてのテナント</option>';allTenants.forEach(t=>sel.innerHTML+=`<option value="${t.id}">${t.name}</option>`);sel.value=cur;
+  let photos=allPhotos; if(sel.value) photos=photos.filter(p=>p.tenant_id===sel.value);
+  document.getElementById('masterPhotoCount').textContent=photos.length+' 枚';
+  document.getElementById('masterPhotosTable').innerHTML=photos.map(p=>`<tr><td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.filename}</td><td style="font-size:12px;">${tMap[p.tenant_id]||'—'}</td><td>${(p.ai_tags||[]).slice(0,3).map(t=>`<span class="tag ai">${t}</span>`).join('')}</td><td><span class="badge badge-${p.status}">${{ok:'✓ OK',check:'⚠ 要確認',ng:'✕ NG'}[p.status]}</span></td><td style="font-size:11px;color:var(--ink3);white-space:nowrap;">${new Date(p.created_at).toLocaleString('ja-JP')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--ink3);">写真がありません</td></tr>';
+}
+
+function renderBilling() {
+  const mrr=allTenants.reduce((s,t)=>s+(pp[t.plan]||0),0),paid=allTenants.filter(t=>t.plan!=='free').length;
+  document.getElementById('billingStats').innerHTML=`<div class="stat-card accent"><div class="stat-label">MRR</div><div class="stat-value">¥${mrr.toLocaleString()}</div></div><div class="stat-card"><div class="stat-label">有料テナント</div><div class="stat-value">${paid}</div><div class="stat-sub">/ ${allTenants.length}社</div></div><div class="stat-card"><div class="stat-label">ARR</div><div class="stat-value">¥${(mrr*12).toLocaleString()}</div></div>`;
+  document.getElementById('billingTable').innerHTML=allTenants.map(t=>`<tr><td style="font-weight:500;">${t.name}</td><td><span class="badge badge-${t.plan}">${t.plan.toUpperCase()}</span></td><td style="font-family:'DM Mono',monospace;">¥${(pp[t.plan]||0).toLocaleString()}</td><td><span class="badge badge-${t.status==='active'?'active':'ng'}">${t.status==='active'?'有効':'停止'}</span></td><td><select class="form-control" style="width:120px;font-size:12px;padding:4px 8px;" onchange="changePlan('${t.id}',this.value)">${['free','starter','pro','team'].map(p=>`<option value="${p}"${t.plan===p?' selected':''}>${p}</option>`).join('')}</select></td></tr>`).join('');
+}
+async function changePlan(tid, plan) { await DB.upsertTenant({ id:tid, plan }); const t=allTenants.find(x=>x.id===tid); if(t)t.plan=plan; renderBilling(); toast('プランを変更しました'); }
+
+function renderSystem() {
+  document.getElementById('masterApiKey').value = localStorage.getItem('kn_apikey')||'';
+  document.getElementById('systemInfo').innerHTML = `Supabase URL: ${SUPABASE_URL}<br>接続状態: ${sb?'✓ 接続済み':'✗ 未接続'}`;
+}
+function saveMasterApiKey(){localStorage.setItem('kn_apikey',document.getElementById('masterApiKey').value.trim());toast('APIキーを保存しました');}
+async function testApiKey(){const k=document.getElementById('masterApiKey').value.trim();if(!k){toast('APIキーを入力してください','error');return;}localStorage.setItem('kn_apikey',k);toast('接続テスト中...','info');try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:10,messages:[{role:'user',content:'hi'}]})});const d=await r.json();if(d.content)toast('✓ 接続成功！APIキーは有効です');else toast('接続エラー: '+(d.error?.message||'Unknown'),'error');}catch{toast('接続に失敗しました','error');}}
+
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('overlay').classList.add('open');}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('open');}
+</script>
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KuraNext — 管理画面</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">読み込み中...</div>
+</div>
+
+<div class="app-layout" id="appLayout" style="display:none;">
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo"><div class="logo-mark">Kura<span>Next</span></div><div class="logo-sub">管理画面</div></div>
+  <div class="sidebar-role">ADMIN</div>
+  <nav>
+    <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>ダッシュボード</div>
+    <div class="nav-item" onclick="showPage('projects')" id="nav-projects"><span class="nav-icon">🏗</span>工事プロジェクト</div>
+    <div class="nav-item" onclick="showPage('photos')" id="nav-photos"><span class="nav-icon">🖼</span>写真管理</div>
+    <div class="nav-item" onclick="showPage('docs')" id="nav-docs"><span class="nav-icon">📄</span>書類出力</div>
+    <div class="nav-item" onclick="showPage('schedule')" id="nav-schedule"><span class="nav-icon">📅</span>スケジュール</div>
+    <div class="nav-item" onclick="showPage('attendance')" id="nav-attendance"><span class="nav-icon">⏰</span>勤怠管理</div>
+    <div class="nav-item" onclick="showPage('skills')" id="nav-skills"><span class="nav-icon">📈</span>スタッフ能力</div>
+    <div class="nav-item" onclick="showPage('ledger')" id="nav-ledger"><span class="nav-icon">💰</span>経理・帳簿</div>
+    <div class="nav-item" onclick="showPage('staff')" id="nav-staff"><span class="nav-icon">👥</span>スタッフ管理</div>
+    <div class="nav-item" onclick="showPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>設定</div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info"><div class="user-avatar" id="avatarInitial">A</div><div><div class="user-name" id="adminName">—</div><div class="user-email" id="adminEmail">—</div></div></div>
+    <button class="logout-btn" onclick="Auth.logout()">ログアウト</button>
+  </div>
+</aside>
+<div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<div class="main-area">
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px;"><button class="menu-btn" onclick="openSidebar()">☰</button><div class="topbar-title" id="pageTitle">ダッシュボード</div></div>
+  <div class="topbar-right" id="tenantBadge"></div>
+</div>
+<div class="content">
+
+<div class="page-section active" id="page-dashboard"><div class="stats-grid" id="statsGrid"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="dash-grid"><div class="card"><div class="card-header"><h2>最近の工事</h2></div><div class="card-body" id="recentProjects"></div></div><div class="card"><div class="card-header"><h2>写真ステータス</h2></div><div class="card-body" id="photoStatus"></div></div></div></div>
+
+<div class="page-section" id="page-projects">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;"><button class="btn btn-primary" onclick="openProjectModal()">＋ 新規工事登録</button></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>工事名</th><th>場所</th><th>状態</th><th>期間</th><th>写真数</th><th>操作</th></tr></thead><tbody id="projectsTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-photos">
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+    <select class="form-control" id="photoFilterProj" onchange="renderAllPhotos()" style="width:190px;"><option value="">すべての現場</option></select>
+    <select class="form-control" id="photoFilterStatus" onchange="renderAllPhotos()" style="width:120px;"><option value="">すべての状態</option><option value="ok">✓ OK</option><option value="check">⚠ 要確認</option><option value="ng">✕ NG</option></select>
+    <div id="allPhotoCount" style="margin-left:auto;font-size:13px;color:var(--ink3);"></div>
+  </div>
+  <div id="allPhotoGrid" class="photo-grid"></div>
+  <div id="emptyAllPhotos" class="empty-state" style="display:none;"><div class="empty-icon">📭</div><p>写真がありません</p></div>
+</div>
+
+<div class="page-section" id="page-docs">
+  <div class="card"><div class="card-header"><h2>📄 工事写真帳の出力</h2></div>
+  <div class="card-body"><div class="form-group"><label class="form-label">出力する工事を選択</label><select class="form-control" id="docProject" style="max-width:400px;" onchange="updateDocInfo()"><option value="">— 工事を選んでください —</option></select></div>
+  <div id="docInfo" style="background:var(--paper);border-radius:8px;padding:14px;margin-bottom:16px;display:none;"><div id="docDetails"></div></div>
+  <button class="btn btn-primary" onclick="doGenerateReport()">📄 PDF出力</button></div></div>
+  <div class="card" style="margin-top:16px;"><div class="card-header"><h2>出力履歴</h2></div><div class="card-body" id="docHistory"><div style="font-size:13px;color:var(--ink3);">まだ出力履歴がありません。</div></div></div>
+</div>
+
+<div class="page-section" id="page-schedule">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <select class="form-control" id="schedFilter" onchange="renderSchedule()" style="width:200px;"><option value="">すべての現場</option></select>
+    <button class="btn btn-primary" onclick="openSchedModal()">＋ 工程を追加</button>
+  </div>
+  <div class="card" style="margin-bottom:16px;"><div class="card-header"><h2>📅 ガントチャート</h2></div><div class="card-body" id="ganttChart" style="overflow-x:auto;"></div></div>
+  <div class="card"><div class="card-header"><h2>工程一覧</h2></div><div class="table-wrap"><table><thead><tr><th>工程名</th><th>現場</th><th>期間</th><th>担当者</th><th>状態</th><th>操作</th></tr></thead><tbody id="schedTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-attendance">
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+    <select class="form-control" id="attUserFilter" onchange="renderAttendance()" style="width:160px;"><option value="">全スタッフ</option></select>
+    <select class="form-control" id="attMonthFilter" onchange="renderAttendance()" style="width:120px;"></select>
+    <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="exportAttCSV()">CSV出力</button>
+  </div>
+  <div class="stats-grid" id="attStats"></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>スタッフ</th><th>日付</th><th>出勤</th><th>退勤</th><th>実働</th><th>現場</th><th>操作</th></tr></thead><tbody id="attTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-skills">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;" id="skillCards"></div>
+</div>
+
+<div class="page-section" id="page-ledger">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <select class="form-control" id="ledgerType" onchange="renderLedger()" style="width:120px;"><option value="">収支すべて</option><option value="income">売上</option><option value="expense">経費</option></select>
+      <select class="form-control" id="ledgerProject" onchange="renderLedger()" style="width:170px;"><option value="">すべての現場</option></select>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary btn-sm" onclick="runAIClassifyAll()"><span class="dot"></span> AI一括仕訳</button>
+      <button class="btn btn-primary" onclick="openLedgerModal()">＋ 仕訳を追加</button>
+    </div>
+  </div>
+  <div class="stats-grid" id="ledgerStats"></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>日付</th><th>摘要</th><th>勘定科目</th><th>種別</th><th>金額</th><th>現場</th><th>操作</th></tr></thead><tbody id="ledgerTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-staff">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;"><button class="btn btn-primary" onclick="openStaffModal()">＋ スタッフを追加</button></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>名前</th><th>メール</th><th>権限</th><th>入社日</th><th>時給</th><th>操作</th></tr></thead><tbody id="staffTable"></tbody></table></div></div>
+</div>
+
+<div class="page-section" id="page-settings">
+  <div class="card" style="max-width:560px;"><div class="card-header"><h2>⚙️ 設定</h2></div>
+  <div class="card-body">
+    <div class="form-group"><label class="form-label">Anthropic APIキー（AI仕分け用）</label><input class="form-control" id="settingApiKey" type="password" placeholder="sk-ant-..."><div style="font-size:11px;color:var(--ink3);margin-top:4px;">このブラウザにのみ保存されます。未設定はモックAIで動作します。</div></div>
+    <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+  </div></div>
+  <div class="card" style="max-width:560px;margin-top:16px;"><div class="card-header"><h2>現在のプラン</h2></div><div class="card-body" id="planInfo"></div></div>
+</div>
+
+</div></div></div>
+
+<!-- モーダル群 -->
+<div class="modal-backdrop" id="projectModal"><div class="modal"><div class="modal-header"><h3 id="projModalTitle">工事登録</h3><button class="modal-close" onclick="closeModal('projectModal')">✕</button></div>
+<div class="modal-body"><div class="form-group"><label class="form-label">工事名 *</label><input class="form-control" id="projName"></div><div class="form-group"><label class="form-label">場所 *</label><input class="form-control" id="projLocation"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">開始日</label><input class="form-control" id="projStart" type="date"></div><div class="form-group"><label class="form-label">終了予定日</label><input class="form-control" id="projEnd" type="date"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">状態</label><select class="form-control" id="projStatus"><option value="active">進行中</option><option value="done">完了</option></select></div><div class="form-group"><label class="form-label">予算（万円）</label><input class="form-control" id="projBudget" type="number"></div></div></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('projectModal')">キャンセル</button><button class="btn btn-primary" onclick="saveProject()">登録</button></div></div></div>
+
+<div class="modal-backdrop" id="schedModal"><div class="modal"><div class="modal-header"><h3>工程を追加</h3><button class="modal-close" onclick="closeModal('schedModal')">✕</button></div>
+<div class="modal-body"><div class="form-group"><label class="form-label">工程名 *</label><input class="form-control" id="schedTitle"></div><div class="form-group"><label class="form-label">現場 *</label><select class="form-control" id="schedProjectSel"><option value="">—</option></select></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">開始日</label><input class="form-control" id="schedStart" type="date"></div><div class="form-group"><label class="form-label">終了日</label><input class="form-control" id="schedEnd" type="date"></div></div>
+<div class="form-group"><label class="form-label">担当者</label><div id="schedAssignees" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">状態</label><select class="form-control" id="schedStatus"><option value="pending">予定</option><option value="active">進行中</option><option value="done">完了</option></select></div><div class="form-group"><label class="form-label">色</label><input type="color" id="schedColor" value="#e05a1e" style="width:60px;height:36px;border:none;border-radius:6px;cursor:pointer;padding:2px;"></div></div></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('schedModal')">キャンセル</button><button class="btn btn-primary" onclick="saveSched()">追加</button></div></div></div>
+
+<div class="modal-backdrop" id="ledgerModal"><div class="modal"><div class="modal-header"><h3>仕訳を追加</h3><button class="modal-close" onclick="closeModal('ledgerModal')">✕</button></div>
+<div class="modal-body">
+<div class="form-group"><label class="form-label">日付 *</label><input class="form-control" id="ledDate" type="date"></div>
+<div class="form-group"><label class="form-label">摘要 *</label><input class="form-control" id="ledDesc" placeholder="生コン購入 3m3" oninput="aiPreview()"></div>
+<div class="form-group"><label class="form-label">金額（円）*</label><input class="form-control" id="ledAmount" type="number"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-group"><label class="form-label">種別</label><select class="form-control" id="ledType"><option value="expense">経費</option><option value="income">売上</option></select></div>
+<div class="form-group"><label class="form-label">勘定科目</label><select class="form-control" id="ledCategory"><option>材料費</option><option>外注費</option><option>労務費</option><option>消耗品費</option><option>交通費</option><option>接待交際費</option><option>地代家賃</option><option>経費</option><option>売上</option><option>雑収入</option></select></div>
+</div>
+<div id="aiPreviewBox" style="background:rgba(224,90,30,0.08);border-radius:8px;padding:10px;font-size:12px;margin-bottom:12px;display:none;"><div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px;">🤖 AI推定</div><div id="aiPreviewText"></div></div>
+<div class="form-group"><label class="form-label">現場</label><select class="form-control" id="ledProject"><option value="">—</option></select></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('ledgerModal')">キャンセル</button><button class="btn btn-primary" onclick="saveLedger()">追加</button></div></div></div>
+
+<div class="modal-backdrop" id="staffModal"><div class="modal"><div class="modal-header"><h3 id="staffModalTitle">スタッフを追加</h3><button class="modal-close" onclick="closeModal('staffModal')">✕</button></div>
+<div class="modal-body" id="staffModalBody"></div>
+<div class="modal-footer" id="staffModalFooter"></div></div></div>
+
+<div class="modal-backdrop" id="photoModal"><div class="modal" style="max-width:540px;"><div class="modal-header"><h3 id="mdPhotoName">写真詳細</h3><button class="modal-close" onclick="closeModal('photoModal')">✕</button></div>
+<div class="modal-body"><div id="mdImgWrap" style="margin-bottom:14px;"></div><div class="form-group"><label class="form-label">AIタグ</label><div id="mdTags" style="display:flex;flex-wrap:wrap;gap:6px;"></div></div><div class="form-group"><label class="form-label">ステータス</label><select class="form-control" id="mdStatus" style="max-width:160px;"><option value="ok">✓ OK</option><option value="check">⚠ 要確認</option><option value="ng">✕ NG</option></select></div><div class="form-group"><label class="form-label">メモ</label><textarea class="form-control" id="mdNote" rows="3"></textarea></div><div style="font-size:12px;color:var(--ink3);" id="mdMeta"></div></div>
+<div class="modal-footer"><button class="btn btn-danger btn-sm" onclick="deletePhoto()">削除</button><button class="btn btn-secondary btn-sm" onclick="closeModal('photoModal')">閉じる</button><button class="btn btn-primary btn-sm" onclick="savePhotoEdit()">保存</button></div></div></div>
+
+<script>
+let myProjects = [], myStaff = [], curPhId = null, editingProjId = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const ok = await Auth.requireInit(['admin']);
+  if (!ok) return;
+
+  const profile = Auth.profile();
+  document.getElementById('adminName').textContent = profile.name;
+  document.getElementById('adminEmail').textContent = Auth.session().user.email;
+  document.getElementById('avatarInitial').textContent = profile.name.charAt(0);
+  document.getElementById('tenantBadge').innerHTML = `<span class="badge badge-${profile.tenant?.plan||'free'}">${profile.tenant?.name||''}｜${(profile.tenant?.plan||'free').toUpperCase()}</span>`;
+
+  myProjects = await DB.getProjects(Auth.tenantId());
+  myStaff = await DB.getTenantProfiles(Auth.tenantId());
+
+  document.getElementById('loadingOverlay').style.display = 'none';
+  document.getElementById('appLayout').style.display = 'flex';
+  renderDashboard();
+});
+
+function showPage(name) {
+  document.querySelectorAll('.page-section').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  const t = {dashboard:'ダッシュボード',projects:'工事プロジェクト',photos:'写真管理',docs:'書類出力',schedule:'スケジュール管理',attendance:'勤怠管理',skills:'スタッフ能力管理',ledger:'経理・帳簿',staff:'スタッフ管理',settings:'設定'};
+  document.getElementById('pageTitle').textContent = t[name] || '';
+  const r = {dashboard:renderDashboard,projects:renderProjects,photos:renderAllPhotos,docs:renderDocs,schedule:renderSchedule,attendance:renderAttendance,skills:renderSkills,ledger:renderLedger,staff:renderStaff,settings:renderSettings};
+  if (r[name]) r[name]();
+  closeSidebar();
+}
+
+// ── ダッシュボード ──
+async function renderDashboard() {
+  const photos = await DB.getPhotos(Auth.tenantId());
+  const ok = photos.filter(p=>p.status==='ok').length, check = photos.filter(p=>p.status==='check').length, ng = photos.filter(p=>p.status==='ng').length, tot = photos.length||1;
+  document.getElementById('statsGrid').innerHTML = `<div class="stat-card accent"><div class="stat-label">総写真数</div><div class="stat-value">${photos.length}</div></div><div class="stat-card"><div class="stat-label">進行中の工事</div><div class="stat-value">${myProjects.filter(p=>p.status==='active').length}</div><div class="stat-sub">件</div></div><div class="stat-card"><div class="stat-label">スタッフ数</div><div class="stat-value">${myStaff.length}</div><div class="stat-sub">名</div></div><div class="stat-card"><div class="stat-label">要確認の写真</div><div class="stat-value">${check}</div><div class="stat-sub">枚</div></div>`;
+  document.getElementById('recentProjects').innerHTML = myProjects.slice(0,4).map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--paper2);"><div><div style="font-size:13px;font-weight:500;">${p.name}</div><div style="font-size:11px;color:var(--ink3);">${p.photo_count||0}枚</div></div><span class="badge badge-${p.status}">${p.status==='active'?'進行中':'完了'}</span></div>`).join('') || '<div style="color:var(--ink3);">工事がありません</div>';
+  document.getElementById('photoStatus').innerHTML = `<div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px;"><span>✓ OK</span><span>${ok}枚</span></div><div class="progress-bar" style="margin-bottom:12px;"><div class="progress-fill" style="width:${(ok/tot*100).toFixed(0)}%;background:var(--ok);"></div></div><div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px;"><span>⚠ 要確認</span><span>${check}枚</span></div><div class="progress-bar" style="margin-bottom:12px;"><div class="progress-fill" style="width:${(check/tot*100).toFixed(0)}%;background:var(--warn);"></div></div><div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px;"><span>✕ NG</span><span>${ng}枚</span></div><div class="progress-bar"><div class="progress-fill" style="width:${(ng/tot*100).toFixed(0)}%;background:var(--ng);"></div></div>`;
+}
+
+// ── 工事プロジェクト ──
+function renderProjects() {
+  document.getElementById('projectsTable').innerHTML = myProjects.map(p=>`<tr><td style="font-weight:500;">${p.name}</td><td>${p.location}</td><td><span class="badge badge-${p.status}">${p.status==='active'?'進行中':'完了'}</span></td><td style="font-size:12px;white-space:nowrap;">${formatDate(p.start_date)}〜${formatDate(p.end_date)}</td><td style="font-family:'DM Mono',monospace;">${p.photo_count||0}</td><td><button class="btn btn-sm btn-secondary" onclick="editProject('${p.id}')">編集</button> <button class="btn btn-sm btn-danger" onclick="deleteProject('${p.id}')">削除</button></td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink3);">工事がありません</td></tr>';
+}
+function openProjectModal(id) {
+  editingProjId = id || null;
+  if (id) { const p=myProjects.find(x=>x.id===id); document.getElementById('projName').value=p.name; document.getElementById('projLocation').value=p.location; document.getElementById('projStart').value=p.start_date||''; document.getElementById('projEnd').value=p.end_date||''; document.getElementById('projStatus').value=p.status; document.getElementById('projBudget').value=p.budget||''; document.getElementById('projModalTitle').textContent='工事を編集'; }
+  else { ['projName','projLocation','projStart','projEnd','projBudget'].forEach(i=>document.getElementById(i).value=''); document.getElementById('projStatus').value='active'; document.getElementById('projModalTitle').textContent='新規工事登録'; }
+  openModal('projectModal');
+}
+function editProject(id) { openProjectModal(id); }
+async function saveProject() {
+  const name=document.getElementById('projName').value.trim(), location=document.getElementById('projLocation').value.trim();
+  if(!name||!location){toast('工事名と場所は必須です','error');return;}
+  const d={name,location,start_date:document.getElementById('projStart').value||null,end_date:document.getElementById('projEnd').value||null,status:document.getElementById('projStatus').value,budget:Number(document.getElementById('projBudget').value)||0,tenant_id:Auth.tenantId()};
+  if(editingProjId)d.id=editingProjId;
+  const saved = await DB.upsertProject(d);
+  if(editingProjId) { const i=myProjects.findIndex(p=>p.id===editingProjId); if(i>=0)myProjects[i]=saved; }
+  else myProjects.unshift(saved);
+  closeModal('projectModal'); renderProjects(); toast(editingProjId?'更新しました':'登録しました');
+}
+async function deleteProject(id){if(!confirm('削除しますか？'))return;await DB.deleteProject(id);myProjects=myProjects.filter(p=>p.id!==id);renderProjects();toast('削除しました');}
+
+// ── 写真管理 ──
+function populatePhotoFilters() { const sel=document.getElementById('photoFilterProj'),cur=sel.value;sel.innerHTML='<option value="">すべての現場</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);sel.value=cur; }
+async function renderAllPhotos() {
+  populatePhotoFilters();
+  const fp=document.getElementById('photoFilterProj').value, fs=document.getElementById('photoFilterStatus').value;
+  const photos = await DB.getPhotos(Auth.tenantId(), { projectId: fp||undefined, status: fs||undefined });
+  document.getElementById('allPhotoCount').textContent = photos.length + ' 枚';
+  const grid=document.getElementById('allPhotoGrid'), empty=document.getElementById('emptyAllPhotos');
+  if(!photos.length){grid.innerHTML='';empty.style.display='block';return;}empty.style.display='none';
+  const items = await Promise.all(photos.map(async ph => ({ ...ph, url: ph.storage_path ? await Storage.getSignedUrl(ph.storage_path, 3600) : null })));
+  grid.innerHTML = items.map(ph=>`<div class="photo-card" onclick="openPhotoModal('${ph.id}')"><div class="photo-thumb">${ph.url?`<img src="${ph.url}" loading="lazy">`:'📷'}</div><div class="photo-info"><div class="photo-name">${ph.filename}</div><div class="photo-tags">${(ph.ai_tags||[]).slice(0,3).map(t=>`<span class="tag ai">${t}</span>`).join('')}</div><div style="margin-top:4px;"><span class="badge badge-${ph.status}">${{ok:'✓ OK',check:'⚠ 要確認',ng:'✕ NG'}[ph.status]}</span></div></div></div>`).join('');
+}
+
+// ── 書類出力 ──
+function renderDocs(){const sel=document.getElementById('docProject');sel.innerHTML='<option value="">— 工事を選んでください —</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);}
+function updateDocInfo(){const pid=document.getElementById('docProject').value,info=document.getElementById('docInfo');if(!pid){info.style.display='none';return;}const p=myProjects.find(x=>x.id===pid);info.style.display='block';document.getElementById('docDetails').innerHTML=`<div style="font-weight:700;">${p.name}</div><div style="font-size:12px;color:var(--ink3);">場所：${p.location}</div>`;}
+async function doGenerateReport(){const pid=document.getElementById('docProject').value;if(!pid){toast('工事を選んでください','error');return;}const p=myProjects.find(x=>x.id===pid);const hist=document.getElementById('docHistory');hist.innerHTML=`<div style="font-size:13px;padding:8px 0;border-bottom:1px solid var(--paper2);">${new Date().toLocaleString('ja-JP')} — ${p.name}</div>`+hist.innerHTML;toast('PDF生成中...');await generateReport(pid,p.name,p.location);}
+
+// ── スケジュール ──
+async function renderSchedule() {
+  const fp=document.getElementById('schedFilter').value; const sel=document.getElementById('schedFilter'),cur=sel.value; sel.innerHTML='<option value="">すべての現場</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);sel.value=cur;
+  const ss = await DB.getSchedules(Auth.tenantId(), fp||undefined);
+  const pMap=Object.fromEntries(myProjects.map(p=>[p.id,p.name])), uMap=Object.fromEntries(myStaff.map(u=>[u.id,u.name]));
+  const sl={done:'完了',active:'進行中',pending:'予定'};
+  // ガントチャート
+  if(ss.length){const dates=ss.flatMap(s=>[new Date(s.start_date),new Date(s.end_date)]);const minD=new Date(Math.min(...dates)),maxD=new Date(Math.max(...dates));const total=Math.max(1,(maxD-minD)/86400000+1);document.getElementById('ganttChart').innerHTML=ss.map(s=>{const sd=new Date(s.start_date),ed=new Date(s.end_date);const l=Math.max(0,(sd-minD)/86400000/total*100).toFixed(1),w=Math.max(2,(ed-sd)/86400000/total*100).toFixed(1);return`<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;"><div style="min-width:120px;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.title}</div><div style="flex:1;background:var(--paper2);border-radius:4px;height:24px;position:relative;"><div style="position:absolute;left:${l}%;width:${w}%;background:${s.color};height:24px;border-radius:4px;min-width:4px;"></div></div><div style="min-width:80px;font-size:11px;color:var(--ink3);white-space:nowrap;">${formatDate(s.start_date)}</div></div>`}).join('');}
+  else document.getElementById('ganttChart').innerHTML='<div style="color:var(--ink3);font-size:13px;">工程がありません</div>';
+  document.getElementById('schedTable').innerHTML=ss.map(s=>`<tr><td style="font-weight:500;">${s.title}</td><td style="font-size:12px;">${pMap[s.project_id]||'—'}</td><td style="font-size:12px;white-space:nowrap;">${formatDate(s.start_date)}〜${formatDate(s.end_date)}</td><td style="font-size:12px;">${(s.assignees||[]).map(id=>uMap[id]||id).join(', ')}</td><td><span class="badge badge-${s.status==='active'?'active':s.status==='done'?'done':'free'}">${sl[s.status]}</span></td><td><button class="btn btn-sm btn-danger" onclick="deleteSchedule('${s.id}')">削除</button></td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink3);">工程がありません</td></tr>';
+}
+function openSchedModal(){const sel=document.getElementById('schedProjectSel');sel.innerHTML='<option value="">—</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);document.getElementById('schedAssignees').innerHTML=myStaff.map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" value="${u.id}"> ${u.name}</label>`).join('');['schedTitle','schedStart','schedEnd'].forEach(i=>document.getElementById(i).value='');document.getElementById('schedStatus').value='pending';document.getElementById('schedColor').value='#e05a1e';openModal('schedModal');}
+async function saveSched(){const title=document.getElementById('schedTitle').value.trim(),pid=document.getElementById('schedProjectSel').value;if(!title||!pid){toast('工程名と現場は必須です','error');return;}const assignees=Array.from(document.querySelectorAll('#schedAssignees input:checked')).map(e=>e.value);await DB.upsertSchedule({tenant_id:Auth.tenantId(),project_id:pid,title,start_date:document.getElementById('schedStart').value,end_date:document.getElementById('schedEnd').value,assignees,color:document.getElementById('schedColor').value,status:document.getElementById('schedStatus').value});closeModal('schedModal');renderSchedule();toast('工程を追加しました');}
+async function deleteSchedule(id){if(!confirm('削除しますか？'))return;await DB.deleteSchedule(id);renderSchedule();toast('削除しました');}
+
+// ── 勤怠管理 ──
+async function renderAttendance(){
+  const sel=document.getElementById('attUserFilter'),cur=sel.value;sel.innerHTML='<option value="">全スタッフ</option>';myStaff.forEach(u=>sel.innerHTML+=`<option value="${u.id}">${u.name}</option>`);sel.value=cur;
+  const msel=document.getElementById('attMonthFilter');if(!msel.options.length){for(let i=0;i<3;i++){const d=new Date();d.setMonth(d.getMonth()-i);const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;msel.innerHTML+=`<option value="${v}">${d.getFullYear()}年${d.getMonth()+1}月</option>`;}}
+  const fU=sel.value, fM=msel.value||msel.options[0]?.value;
+  const recs = await DB.getAttendance(Auth.tenantId(), { userId:fU||undefined, month:fM });
+  const uMap=Object.fromEntries(myStaff.map(u=>[u.id,u]));
+  let totalH=0,days=new Set();recs.forEach(r=>{const h=calcWorkHours(r.clock_in,r.clock_out,r.break_min);totalH+=h;if(r.clock_out)days.add(r.date+r.user_id);});
+  document.getElementById('attStats').innerHTML=`<div class="stat-card"><div class="stat-label">合計実働時間</div><div class="stat-value">${totalH.toFixed(1)}</div><div class="stat-sub">時間</div></div><div class="stat-card"><div class="stat-label">延べ出勤日数</div><div class="stat-value">${days.size}</div><div class="stat-sub">日</div></div>`;
+  document.getElementById('attTable').innerHTML=recs.map(r=>{const h=calcWorkHours(r.clock_in,r.clock_out,r.break_min);const u=uMap[r.user_id];const pn=myProjects.find(p=>p.id===r.project_id)?.name||'—';return`<tr><td style="font-weight:500;">${u?.name||r.user_id}</td><td>${formatDate(r.date)}</td><td style="font-family:'DM Mono',monospace;color:var(--ok);">${r.clock_in||'—'}</td><td style="font-family:'DM Mono',monospace;color:var(--ng);">${r.clock_out||'—'}</td><td style="font-family:'DM Mono',monospace;">${r.clock_out?h.toFixed(1)+'h':'—'}</td><td style="font-size:12px;">${pn}</td><td><button class="btn btn-sm btn-danger" onclick="deleteAtt('${r.id}')">削除</button></td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink3);">打刻データなし</td></tr>';
+}
+async function deleteAtt(id){if(!confirm('削除しますか？'))return;await DB.deleteAttendance(id);renderAttendance();toast('削除しました');}
+async function exportAttCSV(){const recs=await DB.getAttendance(Auth.tenantId());const uMap=Object.fromEntries(myStaff.map(u=>[u.id,u.name]));const rows=[['スタッフ','日付','出勤','退勤','実働(h)','現場'],...recs.map(r=>[uMap[r.user_id]||r.user_id,r.date,r.clock_in,r.clock_out,r.clock_out?calcWorkHours(r.clock_in,r.clock_out,r.break_min).toFixed(1):'',myProjects.find(p=>p.id===r.project_id)?.name||''])];const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));a.download='勤怠データ.csv';a.click();toast('CSVを出力しました');}
+
+// ── スキル管理 ──
+async function renderSkills(){
+  document.getElementById('skillCards').innerHTML=myStaff.map(u=>{const s=u.skills||{};const ent=Object.entries(s);const recs_count=0;return`<div class="card"><div class="card-header"><div style="display:flex;align-items:center;gap:10px;"><div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">${u.name.charAt(0)}</div><div><div style="font-weight:700;">${u.name}</div><div style="font-size:11px;color:var(--ink3);">${u.role==='admin'?'管理者':'スタッフ'}${u.hourly_rate?'　'+formatMoney(u.hourly_rate)+'/h':''}</div></div></div><button class="btn btn-sm btn-secondary" onclick="editSkills('${u.id}')">編集</button></div><div class="card-body">${ent.length?ent.map(([k,v])=>`<div class="skill-bar"><div class="skill-name">${k}</div><div class="skill-track"><div class="skill-fill" style="width:${v*20}%;"></div></div><div class="skill-score">${v}/5</div></div>`).join(''):'<div style="font-size:13px;color:var(--ink3);">スキルデータなし</div>'}</div></div>`;}).join('');
+}
+function editSkills(uid){const u=myStaff.find(x=>x.id===uid);if(!u)return;const skills=u.skills||{};const all=['土木','基礎','配筋','型枠','内装','クロス','塗装','外構','舗装','電気','給排水'];document.getElementById('staffModalTitle').textContent=u.name+'のスキル編集';document.getElementById('staffModalBody').innerHTML=all.map(sk=>`<div class="skill-bar" style="margin-bottom:14px;"><div class="skill-name">${sk}</div><input type="range" min="0" max="5" value="${skills[sk]||0}" oninput="this.nextElementSibling.textContent=this.value+'/5'" style="flex:1;" data-skill="${sk}"><div class="skill-score">${skills[sk]||0}/5</div></div>`).join('');document.getElementById('staffModalFooter').innerHTML=`<button class="btn btn-secondary" onclick="closeModal('staffModal')">キャンセル</button><button class="btn btn-primary" onclick="saveSkills('${uid}')">保存</button>`;openModal('staffModal');}
+async function saveSkills(uid){const skills={};document.querySelectorAll('#staffModalBody [data-skill]').forEach(el=>skills[el.dataset.skill]=Number(el.value));await DB.updateProfile(uid,{skills});const i=myStaff.findIndex(u=>u.id===uid);if(i>=0)myStaff[i].skills=skills;closeModal('staffModal');renderSkills();toast('スキルを更新しました');}
+
+// ── 経理 ──
+async function renderLedger(){
+  const ps=myProjects,sel=document.getElementById('ledgerProject'),cur=sel.value;sel.innerHTML='<option value="">すべての現場</option>';ps.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);sel.value=cur;
+  const fT=document.getElementById('ledgerType').value,fP=sel.value;
+  const recs = await DB.getLedger(Auth.tenantId(), { type:fT||undefined, projectId:fP||undefined });
+  const income=recs.filter(l=>l.type==='income').reduce((s,l)=>s+l.amount,0),expense=recs.filter(l=>l.type==='expense').reduce((s,l)=>s+l.amount,0);
+  document.getElementById('ledgerStats').innerHTML=`<div class="stat-card accent"><div class="stat-label">売上合計</div><div class="stat-value">${formatMoney(income)}</div></div><div class="stat-card"><div class="stat-label">経費合計</div><div class="stat-value">${formatMoney(expense)}</div></div><div class="stat-card" style="background:${income-expense>=0?'#e6f7ee':'#fdecea'};border-color:${income-expense>=0?'#a8dfbf':'#f5c6c3'};"><div class="stat-label">粗利益</div><div class="stat-value" style="color:${income-expense>=0?'var(--ok)':'var(--ng)'};">${formatMoney(income-expense)}</div></div>`;
+  const pMap=Object.fromEntries(ps.map(p=>[p.id,p.name]));
+  document.getElementById('ledgerTable').innerHTML=recs.map(l=>`<tr><td style="font-size:12px;white-space:nowrap;">${formatDate(l.date)}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.description}</td><td><span style="background:var(--paper2);color:var(--ink2);padding:2px 8px;border-radius:4px;font-size:11px;">${l.category}</span></td><td><span class="badge badge-${l.type==='income'?'active':'free'}">${l.type==='income'?'売上':'経費'}</span></td><td style="font-family:'DM Mono',monospace;font-weight:700;color:${l.type==='income'?'var(--ok)':'var(--ng)'};">${l.type==='income'?'+':'-'}${formatMoney(l.amount)}</td><td style="font-size:12px;">${pMap[l.project_id]||'—'}</td><td><button class="btn btn-sm btn-danger" onclick="deleteLedger('${l.id}')">削除</button></td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--ink3);">データなし</td></tr>';
+}
+function openLedgerModal(){document.getElementById('ledDate').value=new Date().toISOString().slice(0,10);['ledDesc','ledAmount'].forEach(i=>document.getElementById(i).value='');document.getElementById('ledType').value='expense';document.getElementById('ledCategory').value='材料費';document.getElementById('aiPreviewBox').style.display='none';const sel=document.getElementById('ledProject');sel.innerHTML='<option value="">—</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);openModal('ledgerModal');}
+let aiTimer=null;async function aiPreview(){clearTimeout(aiTimer);aiTimer=setTimeout(async()=>{const d=document.getElementById('ledDesc').value.trim();if(!d)return;const r=await AI.classifyLedger(d,document.getElementById('ledAmount').value||0);document.getElementById('aiPreviewBox').style.display='block';document.getElementById('aiPreviewText').textContent=`勘定科目: ${r.category}　種別: ${r.type==='income'?'売上':'経費'}`;document.getElementById('ledCategory').value=r.category;document.getElementById('ledType').value=r.type;},600);}
+async function saveLedger(){const desc=document.getElementById('ledDesc').value.trim(),amt=Number(document.getElementById('ledAmount').value);if(!desc||!amt){toast('摘要と金額は必須です','error');return;}await DB.upsertLedger({tenant_id:Auth.tenantId(),date:document.getElementById('ledDate').value,amount:amt,type:document.getElementById('ledType').value,category:document.getElementById('ledCategory').value,description:desc,project_id:document.getElementById('ledProject').value||null,status:'ok'});closeModal('ledgerModal');renderLedger();toast('追加しました');}
+async function deleteLedger(id){if(!confirm('削除しますか？'))return;await DB.deleteLedger(id);renderLedger();toast('削除しました');}
+async function runAIClassifyAll(){const recs=await DB.getLedger(Auth.tenantId());let c=0;for(const l of recs){const r=await AI.classifyLedger(l.description,l.amount);await DB.upsertLedger({...l,category:r.category,type:r.type});c++;}renderLedger();toast(`${c}件をAI仕訳しました`);}
+
+// ── スタッフ管理 ──
+function renderStaff(){document.getElementById('staffTable').innerHTML=myStaff.map(u=>`<tr><td style="font-weight:500;">${u.name}</td><td style="color:var(--ink3);">${Auth.session().user.email}</td><td><span class="badge badge-${u.role==='admin'?'active':'free'}">${u.role==='admin'?'管理者':'スタッフ'}</span></td><td style="font-size:12px;">${formatDate(u.join_date)}</td><td style="font-family:'DM Mono',monospace;">${u.hourly_rate?formatMoney(u.hourly_rate)+'/h':'—'}</td><td><button class="btn btn-sm btn-danger" onclick="deleteStaff('${u.id}')" ${u.id===Auth.userId()?'disabled':''}>削除</button></td></tr>`).join('');}
+function openStaffModal(){document.getElementById('staffModalTitle').textContent='スタッフを追加';document.getElementById('staffModalBody').innerHTML=`<div style="background:var(--paper);border-radius:8px;padding:12px;font-size:12px;color:var(--ink3);margin-bottom:16px;">📧 入力したメールアドレスにSupabaseから招待メールが送られます。スタッフは招待リンクからパスワードを設定してログインします。</div><div class="form-group"><label class="form-label">名前 *</label><input class="form-control" id="newStaffName"></div><div class="form-group"><label class="form-label">メールアドレス *</label><input class="form-control" id="newStaffEmail" type="email"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">権限</label><select class="form-control" id="newStaffRole"><option value="staff">スタッフ</option><option value="admin">管理者</option></select></div><div class="form-group"><label class="form-label">時給（円）</label><input class="form-control" id="newStaffRate" type="number" placeholder="2000"></div></div><div class="form-group"><label class="form-label">入社日</label><input class="form-control" id="newStaffJoin" type="date"></div>`;document.getElementById('staffModalFooter').innerHTML=`<button class="btn btn-secondary" onclick="closeModal('staffModal')">キャンセル</button><button class="btn btn-primary" onclick="saveNewStaff()">招待メールを送る</button>`;openModal('staffModal');}
+async function saveNewStaff(){const name=document.getElementById('newStaffName').value.trim(),email=document.getElementById('newStaffEmail').value.trim();if(!name||!email){toast('名前とメールは必須です','error');return;}toast('招待メールを送信しました（スタッフ招待はSupabase管理画面のInvite Userから行えます）','info');closeModal('staffModal');}
+async function deleteStaff(id){if(id===Auth.userId())return;if(!confirm('削除しますか？'))return;await DB.deleteProfile(id);myStaff=myStaff.filter(u=>u.id!==id);renderStaff();toast('削除しました');}
+
+// ── 設定 ──
+function renderSettings(){document.getElementById('settingApiKey').value=localStorage.getItem('kn_apikey')||'';const p=Auth.profile()?.tenant;const pm={free:'無料プラン',starter:'スターター ¥980/月',pro:'プロ ¥2,480/月',team:'チーム ¥1,980/ユーザー/月'};document.getElementById('planInfo').innerHTML=`<div style="font-size:15px;font-weight:700;">${pm[p?.plan]||'—'}</div><div style="font-size:12px;color:var(--ink3);margin-top:4px;">プラン変更はマスター管理者にお問い合わせください。</div>`;}
+function saveSettings(){localStorage.setItem('kn_apikey',document.getElementById('settingApiKey').value.trim());toast('設定を保存しました');}
+
+// ── 写真モーダル ──
+async function openPhotoModal(id){const photos=await DB.getPhotos(Auth.tenantId());const ph=photos.find(p=>p.id===id);if(!ph)return;curPhId=id;let url=null;if(ph.storage_path)url=await Storage.getSignedUrl(ph.storage_path);document.getElementById('mdPhotoName').textContent=ph.filename;document.getElementById('mdImgWrap').innerHTML=url?`<img src="${url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:8px;background:var(--paper2);">`:`<div style="height:160px;background:var(--paper2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:48px;">📷</div>`;document.getElementById('mdTags').innerHTML=(ph.ai_tags||[]).map(t=>`<span class="tag ai">${t}</span>`).join('');document.getElementById('mdStatus').value=ph.status||'ok';document.getElementById('mdNote').value=ph.note||'';document.getElementById('mdMeta').textContent=`📅 ${new Date(ph.created_at).toLocaleString('ja-JP')}`;openModal('photoModal');}
+async function savePhotoEdit(){if(!curPhId)return;await DB.updatePhoto(curPhId,{status:document.getElementById('mdStatus').value,note:document.getElementById('mdNote').value});closeModal('photoModal');renderAllPhotos();toast('更新しました');}
+async function deletePhoto(){if(!curPhId)return;if(!confirm('削除しますか？'))return;const photos=await DB.getPhotos(Auth.tenantId());const ph=photos.find(p=>p.id===curPhId);if(ph?.storage_path)await Storage.deletePhoto(ph.storage_path);await DB.deletePhoto(curPhId);closeModal('photoModal');renderAllPhotos();toast('削除しました');}
+
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('overlay').classList.add('open');}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('open');}
+</script>
+</body>
+</html>
