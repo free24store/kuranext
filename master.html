@@ -25,7 +25,7 @@
   </nav>
   <div class="sidebar-footer">
     <div class="user-info"><div class="user-avatar" style="background:linear-gradient(135deg,#e8c96a,#d4a017);">👑</div><div><div class="user-name">マスター管理者</div><div class="user-email" style="color:#e8c96a;font-size:10px;">SYSTEM ADMIN</div></div></div>
-    <button class="logout-btn" onclick="Auth.logout()">ログアウト</button>
+    <button class="logout-btn" onclick="sb.auth.signOut().then(()=>location.href="index.html")">ログアウト</button>
   </div>
 </aside>
 <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
@@ -107,13 +107,16 @@
 let allTenants = [], allUsers = [], allPhotos = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const ok = await Auth.requireInit(['master']);
-  if (!ok) return;
+  // 認証チェック
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.href = 'index.html'; return; }
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+  if (!profile || profile.role !== 'master') { location.href = 'index.html'; return; }
 
   // 全データ取得
   allTenants = await DB.getAllTenants();
   allUsers   = await DB.getAllProfiles();
-  allPhotos  = await DB.getPhotos(null); // masterはRLSで全件取れる
+  allPhotos  = await DB.getPhotos(null);
 
   document.getElementById('loadingOverlay').style.display = 'none';
   document.getElementById('appLayout').style.display = 'flex';

@@ -33,7 +33,7 @@
   </nav>
   <div class="sidebar-footer">
     <div class="user-info"><div class="user-avatar" id="avatarInitial">A</div><div><div class="user-name" id="adminName">—</div><div class="user-email" id="adminEmail">—</div></div></div>
-    <button class="logout-btn" onclick="Auth.logout()">ログアウト</button>
+    <button class="logout-btn" onclick="sb.auth.signOut().then(()=>location.href="index.html")">ログアウト</button>
   </div>
 </aside>
 <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
@@ -164,17 +164,25 @@
 let myProjects = [], myStaff = [], curPhId = null, editingProjId = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const ok = await Auth.requireInit(['admin']);
-  if (!ok) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.href = 'index.html'; return; }
+  const { data: profile } = await sb.from('profiles')
+    .select('*, tenant:tenants(*)')
+    .eq('id', session.user.id)
+    .single();
+  if (!profile || !['admin','master'].includes(profile.role)) { location.href = 'index.html'; return; }
 
-  const profile = Auth.profile();
+  // グローバルにセッション情報を保持
+  window._profile = profile;
+  window._session = session;
+
   document.getElementById('adminName').textContent = profile.name;
-  document.getElementById('adminEmail').textContent = Auth.session().user.email;
-  document.getElementById('avatarInitial').textContent = profile.name.charAt(0);
+  document.getElementById('adminEmail').textContent = session.user.email;
+  document.getElementById('avatarInitial').textContent = (profile.name||'A').charAt(0);
   document.getElementById('tenantBadge').innerHTML = `<span class="badge badge-${profile.tenant?.plan||'free'}">${profile.tenant?.name||''}｜${(profile.tenant?.plan||'free').toUpperCase()}</span>`;
 
-  myProjects = await DB.getProjects(Auth.tenantId());
-  myStaff = await DB.getTenantProfiles(Auth.tenantId());
+  myProjects = await DB.getProjects(profile.tenant_id);
+  myStaff = await DB.getTenantProfiles(profile.tenant_id);
 
   document.getElementById('loadingOverlay').style.display = 'none';
   document.getElementById('appLayout').style.display = 'flex';
@@ -195,7 +203,7 @@ function showPage(name) {
 
 // ── ダッシュボード ──
 async function renderDashboard() {
-  const photos = await DB.getPhotos(Auth.tenantId());
+  const photos = await DB.getPhotos(window._profile?.tenant_id);
   const ok = photos.filter(p=>p.status==='ok').length, check = photos.filter(p=>p.status==='check').length, ng = photos.filter(p=>p.status==='ng').length, tot = photos.length||1;
   document.getElementById('statsGrid').innerHTML = `<div class="stat-card accent"><div class="stat-label">総写真数</div><div class="stat-value">${photos.length}</div></div><div class="stat-card"><div class="stat-label">進行中の工事</div><div class="stat-value">${myProjects.filter(p=>p.status==='active').length}</div><div class="stat-sub">件</div></div><div class="stat-card"><div class="stat-label">スタッフ数</div><div class="stat-value">${myStaff.length}</div><div class="stat-sub">名</div></div><div class="stat-card"><div class="stat-label">要確認の写真</div><div class="stat-value">${check}</div><div class="stat-sub">枚</div></div>`;
   document.getElementById('recentProjects').innerHTML = myProjects.slice(0,4).map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--paper2);"><div><div style="font-size:13px;font-weight:500;">${p.name}</div><div style="font-size:11px;color:var(--ink3);">${p.photo_count||0}枚</div></div><span class="badge badge-${p.status}">${p.status==='active'?'進行中':'完了'}</span></div>`).join('') || '<div style="color:var(--ink3);">工事がありません</div>';
@@ -216,7 +224,7 @@ function editProject(id) { openProjectModal(id); }
 async function saveProject() {
   const name=document.getElementById('projName').value.trim(), location=document.getElementById('projLocation').value.trim();
   if(!name||!location){toast('工事名と場所は必須です','error');return;}
-  const d={name,location,start_date:document.getElementById('projStart').value||null,end_date:document.getElementById('projEnd').value||null,status:document.getElementById('projStatus').value,budget:Number(document.getElementById('projBudget').value)||0,tenant_id:Auth.tenantId()};
+  const d={name,location,start_date:document.getElementById('projStart').value||null,end_date:document.getElementById('projEnd').value||null,status:document.getElementById('projStatus').value,budget:Number(document.getElementById('projBudget').value)||0,tenant_id:window._profile?.tenant_id};
   if(editingProjId)d.id=editingProjId;
   const saved = await DB.upsertProject(d);
   if(editingProjId) { const i=myProjects.findIndex(p=>p.id===editingProjId); if(i>=0)myProjects[i]=saved; }
@@ -230,7 +238,7 @@ function populatePhotoFilters() { const sel=document.getElementById('photoFilter
 async function renderAllPhotos() {
   populatePhotoFilters();
   const fp=document.getElementById('photoFilterProj').value, fs=document.getElementById('photoFilterStatus').value;
-  const photos = await DB.getPhotos(Auth.tenantId(), { projectId: fp||undefined, status: fs||undefined });
+  const photos = await DB.getPhotos(window._profile?.tenant_id, { projectId: fp||undefined, status: fs||undefined });
   document.getElementById('allPhotoCount').textContent = photos.length + ' 枚';
   const grid=document.getElementById('allPhotoGrid'), empty=document.getElementById('emptyAllPhotos');
   if(!photos.length){grid.innerHTML='';empty.style.display='block';return;}empty.style.display='none';
@@ -246,7 +254,7 @@ async function doGenerateReport(){const pid=document.getElementById('docProject'
 // ── スケジュール ──
 async function renderSchedule() {
   const fp=document.getElementById('schedFilter').value; const sel=document.getElementById('schedFilter'),cur=sel.value; sel.innerHTML='<option value="">すべての現場</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);sel.value=cur;
-  const ss = await DB.getSchedules(Auth.tenantId(), fp||undefined);
+  const ss = await DB.getSchedules(window._profile?.tenant_id, fp||undefined);
   const pMap=Object.fromEntries(myProjects.map(p=>[p.id,p.name])), uMap=Object.fromEntries(myStaff.map(u=>[u.id,u.name]));
   const sl={done:'完了',active:'進行中',pending:'予定'};
   // ガントチャート
@@ -255,7 +263,7 @@ async function renderSchedule() {
   document.getElementById('schedTable').innerHTML=ss.map(s=>`<tr><td style="font-weight:500;">${s.title}</td><td style="font-size:12px;">${pMap[s.project_id]||'—'}</td><td style="font-size:12px;white-space:nowrap;">${formatDate(s.start_date)}〜${formatDate(s.end_date)}</td><td style="font-size:12px;">${(s.assignees||[]).map(id=>uMap[id]||id).join(', ')}</td><td><span class="badge badge-${s.status==='active'?'active':s.status==='done'?'done':'free'}">${sl[s.status]}</span></td><td><button class="btn btn-sm btn-danger" onclick="deleteSchedule('${s.id}')">削除</button></td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink3);">工程がありません</td></tr>';
 }
 function openSchedModal(){const sel=document.getElementById('schedProjectSel');sel.innerHTML='<option value="">—</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);document.getElementById('schedAssignees').innerHTML=myStaff.map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" value="${u.id}"> ${u.name}</label>`).join('');['schedTitle','schedStart','schedEnd'].forEach(i=>document.getElementById(i).value='');document.getElementById('schedStatus').value='pending';document.getElementById('schedColor').value='#e05a1e';openModal('schedModal');}
-async function saveSched(){const title=document.getElementById('schedTitle').value.trim(),pid=document.getElementById('schedProjectSel').value;if(!title||!pid){toast('工程名と現場は必須です','error');return;}const assignees=Array.from(document.querySelectorAll('#schedAssignees input:checked')).map(e=>e.value);await DB.upsertSchedule({tenant_id:Auth.tenantId(),project_id:pid,title,start_date:document.getElementById('schedStart').value,end_date:document.getElementById('schedEnd').value,assignees,color:document.getElementById('schedColor').value,status:document.getElementById('schedStatus').value});closeModal('schedModal');renderSchedule();toast('工程を追加しました');}
+async function saveSched(){const title=document.getElementById('schedTitle').value.trim(),pid=document.getElementById('schedProjectSel').value;if(!title||!pid){toast('工程名と現場は必須です','error');return;}const assignees=Array.from(document.querySelectorAll('#schedAssignees input:checked')).map(e=>e.value);await DB.upsertSchedule({tenant_id:window._profile?.tenant_id,project_id:pid,title,start_date:document.getElementById('schedStart').value,end_date:document.getElementById('schedEnd').value,assignees,color:document.getElementById('schedColor').value,status:document.getElementById('schedStatus').value});closeModal('schedModal');renderSchedule();toast('工程を追加しました');}
 async function deleteSchedule(id){if(!confirm('削除しますか？'))return;await DB.deleteSchedule(id);renderSchedule();toast('削除しました');}
 
 // ── 勤怠管理 ──
@@ -263,14 +271,14 @@ async function renderAttendance(){
   const sel=document.getElementById('attUserFilter'),cur=sel.value;sel.innerHTML='<option value="">全スタッフ</option>';myStaff.forEach(u=>sel.innerHTML+=`<option value="${u.id}">${u.name}</option>`);sel.value=cur;
   const msel=document.getElementById('attMonthFilter');if(!msel.options.length){for(let i=0;i<3;i++){const d=new Date();d.setMonth(d.getMonth()-i);const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;msel.innerHTML+=`<option value="${v}">${d.getFullYear()}年${d.getMonth()+1}月</option>`;}}
   const fU=sel.value, fM=msel.value||msel.options[0]?.value;
-  const recs = await DB.getAttendance(Auth.tenantId(), { userId:fU||undefined, month:fM });
+  const recs = await DB.getAttendance(window._profile?.tenant_id, { userId:fU||undefined, month:fM });
   const uMap=Object.fromEntries(myStaff.map(u=>[u.id,u]));
   let totalH=0,days=new Set();recs.forEach(r=>{const h=calcWorkHours(r.clock_in,r.clock_out,r.break_min);totalH+=h;if(r.clock_out)days.add(r.date+r.user_id);});
   document.getElementById('attStats').innerHTML=`<div class="stat-card"><div class="stat-label">合計実働時間</div><div class="stat-value">${totalH.toFixed(1)}</div><div class="stat-sub">時間</div></div><div class="stat-card"><div class="stat-label">延べ出勤日数</div><div class="stat-value">${days.size}</div><div class="stat-sub">日</div></div>`;
   document.getElementById('attTable').innerHTML=recs.map(r=>{const h=calcWorkHours(r.clock_in,r.clock_out,r.break_min);const u=uMap[r.user_id];const pn=myProjects.find(p=>p.id===r.project_id)?.name||'—';return`<tr><td style="font-weight:500;">${u?.name||r.user_id}</td><td>${formatDate(r.date)}</td><td style="font-family:'DM Mono',monospace;color:var(--ok);">${r.clock_in||'—'}</td><td style="font-family:'DM Mono',monospace;color:var(--ng);">${r.clock_out||'—'}</td><td style="font-family:'DM Mono',monospace;">${r.clock_out?h.toFixed(1)+'h':'—'}</td><td style="font-size:12px;">${pn}</td><td><button class="btn btn-sm btn-danger" onclick="deleteAtt('${r.id}')">削除</button></td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink3);">打刻データなし</td></tr>';
 }
 async function deleteAtt(id){if(!confirm('削除しますか？'))return;await DB.deleteAttendance(id);renderAttendance();toast('削除しました');}
-async function exportAttCSV(){const recs=await DB.getAttendance(Auth.tenantId());const uMap=Object.fromEntries(myStaff.map(u=>[u.id,u.name]));const rows=[['スタッフ','日付','出勤','退勤','実働(h)','現場'],...recs.map(r=>[uMap[r.user_id]||r.user_id,r.date,r.clock_in,r.clock_out,r.clock_out?calcWorkHours(r.clock_in,r.clock_out,r.break_min).toFixed(1):'',myProjects.find(p=>p.id===r.project_id)?.name||''])];const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));a.download='勤怠データ.csv';a.click();toast('CSVを出力しました');}
+async function exportAttCSV(){const recs=await DB.getAttendance(window._profile?.tenant_id);const uMap=Object.fromEntries(myStaff.map(u=>[u.id,u.name]));const rows=[['スタッフ','日付','出勤','退勤','実働(h)','現場'],...recs.map(r=>[uMap[r.user_id]||r.user_id,r.date,r.clock_in,r.clock_out,r.clock_out?calcWorkHours(r.clock_in,r.clock_out,r.break_min).toFixed(1):'',myProjects.find(p=>p.id===r.project_id)?.name||''])];const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));a.download='勤怠データ.csv';a.click();toast('CSVを出力しました');}
 
 // ── スキル管理 ──
 async function renderSkills(){
@@ -283,7 +291,7 @@ async function saveSkills(uid){const skills={};document.querySelectorAll('#staff
 async function renderLedger(){
   const ps=myProjects,sel=document.getElementById('ledgerProject'),cur=sel.value;sel.innerHTML='<option value="">すべての現場</option>';ps.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);sel.value=cur;
   const fT=document.getElementById('ledgerType').value,fP=sel.value;
-  const recs = await DB.getLedger(Auth.tenantId(), { type:fT||undefined, projectId:fP||undefined });
+  const recs = await DB.getLedger(window._profile?.tenant_id, { type:fT||undefined, projectId:fP||undefined });
   const income=recs.filter(l=>l.type==='income').reduce((s,l)=>s+l.amount,0),expense=recs.filter(l=>l.type==='expense').reduce((s,l)=>s+l.amount,0);
   document.getElementById('ledgerStats').innerHTML=`<div class="stat-card accent"><div class="stat-label">売上合計</div><div class="stat-value">${formatMoney(income)}</div></div><div class="stat-card"><div class="stat-label">経費合計</div><div class="stat-value">${formatMoney(expense)}</div></div><div class="stat-card" style="background:${income-expense>=0?'#e6f7ee':'#fdecea'};border-color:${income-expense>=0?'#a8dfbf':'#f5c6c3'};"><div class="stat-label">粗利益</div><div class="stat-value" style="color:${income-expense>=0?'var(--ok)':'var(--ng)'};">${formatMoney(income-expense)}</div></div>`;
   const pMap=Object.fromEntries(ps.map(p=>[p.id,p.name]));
@@ -291,24 +299,24 @@ async function renderLedger(){
 }
 function openLedgerModal(){document.getElementById('ledDate').value=new Date().toISOString().slice(0,10);['ledDesc','ledAmount'].forEach(i=>document.getElementById(i).value='');document.getElementById('ledType').value='expense';document.getElementById('ledCategory').value='材料費';document.getElementById('aiPreviewBox').style.display='none';const sel=document.getElementById('ledProject');sel.innerHTML='<option value="">—</option>';myProjects.forEach(p=>sel.innerHTML+=`<option value="${p.id}">${p.name}</option>`);openModal('ledgerModal');}
 let aiTimer=null;async function aiPreview(){clearTimeout(aiTimer);aiTimer=setTimeout(async()=>{const d=document.getElementById('ledDesc').value.trim();if(!d)return;const r=await AI.classifyLedger(d,document.getElementById('ledAmount').value||0);document.getElementById('aiPreviewBox').style.display='block';document.getElementById('aiPreviewText').textContent=`勘定科目: ${r.category}　種別: ${r.type==='income'?'売上':'経費'}`;document.getElementById('ledCategory').value=r.category;document.getElementById('ledType').value=r.type;},600);}
-async function saveLedger(){const desc=document.getElementById('ledDesc').value.trim(),amt=Number(document.getElementById('ledAmount').value);if(!desc||!amt){toast('摘要と金額は必須です','error');return;}await DB.upsertLedger({tenant_id:Auth.tenantId(),date:document.getElementById('ledDate').value,amount:amt,type:document.getElementById('ledType').value,category:document.getElementById('ledCategory').value,description:desc,project_id:document.getElementById('ledProject').value||null,status:'ok'});closeModal('ledgerModal');renderLedger();toast('追加しました');}
+async function saveLedger(){const desc=document.getElementById('ledDesc').value.trim(),amt=Number(document.getElementById('ledAmount').value);if(!desc||!amt){toast('摘要と金額は必須です','error');return;}await DB.upsertLedger({tenant_id:window._profile?.tenant_id,date:document.getElementById('ledDate').value,amount:amt,type:document.getElementById('ledType').value,category:document.getElementById('ledCategory').value,description:desc,project_id:document.getElementById('ledProject').value||null,status:'ok'});closeModal('ledgerModal');renderLedger();toast('追加しました');}
 async function deleteLedger(id){if(!confirm('削除しますか？'))return;await DB.deleteLedger(id);renderLedger();toast('削除しました');}
-async function runAIClassifyAll(){const recs=await DB.getLedger(Auth.tenantId());let c=0;for(const l of recs){const r=await AI.classifyLedger(l.description,l.amount);await DB.upsertLedger({...l,category:r.category,type:r.type});c++;}renderLedger();toast(`${c}件をAI仕訳しました`);}
+async function runAIClassifyAll(){const recs=await DB.getLedger(window._profile?.tenant_id);let c=0;for(const l of recs){const r=await AI.classifyLedger(l.description,l.amount);await DB.upsertLedger({...l,category:r.category,type:r.type});c++;}renderLedger();toast(`${c}件をAI仕訳しました`);}
 
 // ── スタッフ管理 ──
-function renderStaff(){document.getElementById('staffTable').innerHTML=myStaff.map(u=>`<tr><td style="font-weight:500;">${u.name}</td><td style="color:var(--ink3);">${Auth.session().user.email}</td><td><span class="badge badge-${u.role==='admin'?'active':'free'}">${u.role==='admin'?'管理者':'スタッフ'}</span></td><td style="font-size:12px;">${formatDate(u.join_date)}</td><td style="font-family:'DM Mono',monospace;">${u.hourly_rate?formatMoney(u.hourly_rate)+'/h':'—'}</td><td><button class="btn btn-sm btn-danger" onclick="deleteStaff('${u.id}')" ${u.id===Auth.userId()?'disabled':''}>削除</button></td></tr>`).join('');}
+function renderStaff(){document.getElementById('staffTable').innerHTML=myStaff.map(u=>`<tr><td style="font-weight:500;">${u.name}</td><td style="color:var(--ink3);">${Auth.session().user.email}</td><td><span class="badge badge-${u.role==='admin'?'active':'free'}">${u.role==='admin'?'管理者':'スタッフ'}</span></td><td style="font-size:12px;">${formatDate(u.join_date)}</td><td style="font-family:'DM Mono',monospace;">${u.hourly_rate?formatMoney(u.hourly_rate)+'/h':'—'}</td><td><button class="btn btn-sm btn-danger" onclick="deleteStaff('${u.id}')" ${u.id===window._session?.user?.id?'disabled':''}>削除</button></td></tr>`).join('');}
 function openStaffModal(){document.getElementById('staffModalTitle').textContent='スタッフを追加';document.getElementById('staffModalBody').innerHTML=`<div style="background:var(--paper);border-radius:8px;padding:12px;font-size:12px;color:var(--ink3);margin-bottom:16px;">📧 入力したメールアドレスにSupabaseから招待メールが送られます。スタッフは招待リンクからパスワードを設定してログインします。</div><div class="form-group"><label class="form-label">名前 *</label><input class="form-control" id="newStaffName"></div><div class="form-group"><label class="form-label">メールアドレス *</label><input class="form-control" id="newStaffEmail" type="email"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="form-group"><label class="form-label">権限</label><select class="form-control" id="newStaffRole"><option value="staff">スタッフ</option><option value="admin">管理者</option></select></div><div class="form-group"><label class="form-label">時給（円）</label><input class="form-control" id="newStaffRate" type="number" placeholder="2000"></div></div><div class="form-group"><label class="form-label">入社日</label><input class="form-control" id="newStaffJoin" type="date"></div>`;document.getElementById('staffModalFooter').innerHTML=`<button class="btn btn-secondary" onclick="closeModal('staffModal')">キャンセル</button><button class="btn btn-primary" onclick="saveNewStaff()">招待メールを送る</button>`;openModal('staffModal');}
 async function saveNewStaff(){const name=document.getElementById('newStaffName').value.trim(),email=document.getElementById('newStaffEmail').value.trim();if(!name||!email){toast('名前とメールは必須です','error');return;}toast('招待メールを送信しました（スタッフ招待はSupabase管理画面のInvite Userから行えます）','info');closeModal('staffModal');}
-async function deleteStaff(id){if(id===Auth.userId())return;if(!confirm('削除しますか？'))return;await DB.deleteProfile(id);myStaff=myStaff.filter(u=>u.id!==id);renderStaff();toast('削除しました');}
+async function deleteStaff(id){if(id===window._session?.user?.id)return;if(!confirm('削除しますか？'))return;await DB.deleteProfile(id);myStaff=myStaff.filter(u=>u.id!==id);renderStaff();toast('削除しました');}
 
 // ── 設定 ──
 function renderSettings(){document.getElementById('settingApiKey').value=localStorage.getItem('kn_apikey')||'';const p=Auth.profile()?.tenant;const pm={free:'無料プラン',starter:'スターター ¥980/月',pro:'プロ ¥2,480/月',team:'チーム ¥1,980/ユーザー/月'};document.getElementById('planInfo').innerHTML=`<div style="font-size:15px;font-weight:700;">${pm[p?.plan]||'—'}</div><div style="font-size:12px;color:var(--ink3);margin-top:4px;">プラン変更はマスター管理者にお問い合わせください。</div>`;}
 function saveSettings(){localStorage.setItem('kn_apikey',document.getElementById('settingApiKey').value.trim());toast('設定を保存しました');}
 
 // ── 写真モーダル ──
-async function openPhotoModal(id){const photos=await DB.getPhotos(Auth.tenantId());const ph=photos.find(p=>p.id===id);if(!ph)return;curPhId=id;let url=null;if(ph.storage_path)url=await Storage.getSignedUrl(ph.storage_path);document.getElementById('mdPhotoName').textContent=ph.filename;document.getElementById('mdImgWrap').innerHTML=url?`<img src="${url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:8px;background:var(--paper2);">`:`<div style="height:160px;background:var(--paper2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:48px;">📷</div>`;document.getElementById('mdTags').innerHTML=(ph.ai_tags||[]).map(t=>`<span class="tag ai">${t}</span>`).join('');document.getElementById('mdStatus').value=ph.status||'ok';document.getElementById('mdNote').value=ph.note||'';document.getElementById('mdMeta').textContent=`📅 ${new Date(ph.created_at).toLocaleString('ja-JP')}`;openModal('photoModal');}
+async function openPhotoModal(id){const photos=await DB.getPhotos(window._profile?.tenant_id);const ph=photos.find(p=>p.id===id);if(!ph)return;curPhId=id;let url=null;if(ph.storage_path)url=await Storage.getSignedUrl(ph.storage_path);document.getElementById('mdPhotoName').textContent=ph.filename;document.getElementById('mdImgWrap').innerHTML=url?`<img src="${url}" style="width:100%;max-height:260px;object-fit:contain;border-radius:8px;background:var(--paper2);">`:`<div style="height:160px;background:var(--paper2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:48px;">📷</div>`;document.getElementById('mdTags').innerHTML=(ph.ai_tags||[]).map(t=>`<span class="tag ai">${t}</span>`).join('');document.getElementById('mdStatus').value=ph.status||'ok';document.getElementById('mdNote').value=ph.note||'';document.getElementById('mdMeta').textContent=`📅 ${new Date(ph.created_at).toLocaleString('ja-JP')}`;openModal('photoModal');}
 async function savePhotoEdit(){if(!curPhId)return;await DB.updatePhoto(curPhId,{status:document.getElementById('mdStatus').value,note:document.getElementById('mdNote').value});closeModal('photoModal');renderAllPhotos();toast('更新しました');}
-async function deletePhoto(){if(!curPhId)return;if(!confirm('削除しますか？'))return;const photos=await DB.getPhotos(Auth.tenantId());const ph=photos.find(p=>p.id===curPhId);if(ph?.storage_path)await Storage.deletePhoto(ph.storage_path);await DB.deletePhoto(curPhId);closeModal('photoModal');renderAllPhotos();toast('削除しました');}
+async function deletePhoto(){if(!curPhId)return;if(!confirm('削除しますか？'))return;const photos=await DB.getPhotos(window._profile?.tenant_id);const ph=photos.find(p=>p.id===curPhId);if(ph?.storage_path)await Storage.deletePhoto(ph.storage_path);await DB.deletePhoto(curPhId);closeModal('photoModal');renderAllPhotos();toast('削除しました');}
 
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}

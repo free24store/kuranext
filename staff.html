@@ -30,7 +30,7 @@
       <div class="user-avatar" id="avatarInitial">S</div>
       <div><div class="user-name" id="staffName">—</div><div class="user-email" id="staffEmail">—</div></div>
     </div>
-    <button class="logout-btn" onclick="Auth.logout()">ログアウト</button>
+    <button class="logout-btn" onclick="sb.auth.signOut().then(()=>location.href="index.html")">ログアウト</button>
   </div>
 </aside>
 <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
@@ -113,15 +113,19 @@ let myProjects = [], todayRec = null, curPhId = null;
 const pageTitle = {upload:'写真アップロード',myPhotos:'自分の写真',attendance:'勤怠打刻',schedule:'工程確認'};
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const ok = await Auth.requireInit(['staff','admin']);
-  if (!ok) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.href = 'index.html'; return; }
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+  if (!profile) { location.href = 'index.html'; return; }
 
-  const profile = Auth.profile();
+  window._profile = profile;
+  window._session = session;
+
   document.getElementById('staffName').textContent = profile.name;
-  document.getElementById('staffEmail').textContent = Auth.session().user.email;
-  document.getElementById('avatarInitial').textContent = profile.name.charAt(0);
+  document.getElementById('staffEmail').textContent = session.user.email;
+  document.getElementById('avatarInitial').textContent = (profile.name||'S').charAt(0);
 
-  myProjects = await DB.getProjects(Auth.tenantId());
+  myProjects = await DB.getProjects(profile.tenant_id);
   populateProjectSelects();
 
   setInterval(() => {
@@ -174,12 +178,12 @@ async function handleFiles(files) {
       const aiResult = await AI.analyzePhoto(file);
       updateQItem(qid, '☁️', 'Storageにアップロード中...');
       // Supabase Storageにアップロード
-      const storagePath = await Storage.uploadPhoto(Auth.tenantId(), file);
+      const storagePath = await Storage.uploadPhoto(window._profile?.tenant_id, file);
       // DBに保存
       await DB.insertPhoto({
-        tenant_id: Auth.tenantId(),
+        tenant_id: window._profile?.tenant_id,
         project_id: pid,
-        uploaded_by: Auth.userId(),
+        uploaded_by: window._session?.user?.id,
         filename: file.name,
         storage_path: storagePath,
         ai_tags: aiResult.tags || [],
@@ -213,7 +217,7 @@ function updateQItem(id, icon, text) {
 async function renderMyPhotos() {
   const fp = document.getElementById('filterProject').value;
   const fs = document.getElementById('filterStatus').value;
-  const photos = await DB.getPhotos(Auth.tenantId(), { uploadedBy: Auth.userId(), projectId: fp || undefined, status: fs || undefined });
+  const photos = await DB.getPhotos(window._profile?.tenant_id, { uploadedBy: window._session?.user?.id, projectId: fp || undefined, status: fs || undefined });
   document.getElementById('photoCount').textContent = photos.length + ' 枚';
   const grid = document.getElementById('photoGrid'), empty = document.getElementById('emptyPhotos');
   if (!photos.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
@@ -240,11 +244,11 @@ async function renderMyPhotos() {
 // ── 勤怠 ─────────────────────────────────────
 async function renderAttendance() {
   populateProjectSelects();
-  todayRec = await DB.getTodayAttendance(Auth.userId());
+  todayRec = await DB.getTodayAttendance(window._session?.user?.id);
   refreshButtons();
   const today = new Date();
   const month = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-  const recs = await DB.getAttendance(Auth.tenantId(), { userId: Auth.userId(), month });
+  const recs = await DB.getAttendance(window._profile?.tenant_id, { userId: window._session?.user?.id, month });
   let totalH = 0;
   document.getElementById('attTable').innerHTML = recs.map(r => {
     const h = calcWorkHours(r.clock_in, r.clock_out, r.break_min);
@@ -268,7 +272,7 @@ async function clockIn() {
   const n = new Date();
   const t = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
   todayRec = await DB.upsertAttendance({
-    tenant_id: Auth.tenantId(), user_id: Auth.userId(),
+    tenant_id: window._profile?.tenant_id, user_id: window._session?.user?.id,
     date: n.toISOString().slice(0,10), clock_in: t, clock_out: null,
     break_min: 60, project_id: document.getElementById('attProject').value || null, note: ''
   });
@@ -286,8 +290,8 @@ async function clockOut() {
 // ── 工程確認 ─────────────────────────────────
 async function renderMySchedule() {
   const fp = document.getElementById('schedProjFilter').value;
-  let ss = await DB.getSchedules(Auth.tenantId(), fp || undefined);
-  ss = ss.filter(s => (s.assignees || []).includes(Auth.userId()));
+  let ss = await DB.getSchedules(window._profile?.tenant_id, fp || undefined);
+  ss = ss.filter(s => (s.assignees || []).includes(window._session?.user?.id));
   const sl = {done:'完了',active:'進行中',pending:'予定'};
   document.getElementById('myScheduleList').innerHTML = ss.length === 0
     ? '<div style="color:var(--ink3);font-size:13px;">担当工程がありません</div>'
@@ -308,7 +312,7 @@ async function renderMySchedule() {
 
 // ── 写真モーダル ──────────────────────────────
 async function openPhotoModal(id) {
-  const photos = await DB.getPhotos(Auth.tenantId(), { uploadedBy: Auth.userId() });
+  const photos = await DB.getPhotos(window._profile?.tenant_id, { uploadedBy: window._session?.user?.id });
   const ph = photos.find(p => p.id === id); if (!ph) return;
   curPhId = id;
   let url = null; if (ph.storage_path) url = await Storage.getSignedUrl(ph.storage_path);

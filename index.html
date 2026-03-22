@@ -43,9 +43,15 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
-  // 既ログイン済みチェック
-  const session = await Auth.init();
-  if (session) redirectByRole(Auth.role());
+  // 既ログイン済みチェック（profileが取得できた場合のみリダイレクト）
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    const { data: profile } = await sb.from('profiles')
+      .select('role')
+      .eq('id', data.session.user.id)
+      .single();
+    if (profile) redirectByRole(profile.role);
+  }
 });
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -58,14 +64,29 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   const email = document.getElementById('email').value;
   const pw = document.getElementById('password').value;
 
-  const result = await Auth.login(email, pw);
-  if (result.error) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if (error) {
     showErr('メールアドレスまたはパスワードが違います');
     btn.disabled = false;
     btn.textContent = 'ログイン';
     return;
   }
-  redirectByRole(Auth.role());
+
+  // profileからroleを取得してリダイレクト
+  const { data: profile } = await sb.from('profiles')
+    .select('role')
+    .eq('id', data.user.id)
+    .single();
+
+  if (!profile) {
+    showErr('アカウントの設定が完了していません。管理者にお問い合わせください。');
+    btn.disabled = false;
+    btn.textContent = 'ログイン';
+    await sb.auth.signOut();
+    return;
+  }
+
+  redirectByRole(profile.role);
 });
 
 function redirectByRole(role) {
@@ -78,12 +99,12 @@ async function sendReset() {
   const email = document.getElementById('email').value;
   if (!email) { showErr('メールアドレスを入力してください'); return; }
   const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: location.origin + '/reset-password.html'
+    redirectTo: location.origin + '/index.html'
   });
   if (error) showErr(error.message);
   else {
     hideErr();
-    toast('パスワードリセットメールを送信しました');
+    alert('パスワードリセットメールを送信しました');
   }
 }
 
