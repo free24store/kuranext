@@ -6,7 +6,7 @@
 <title>KuraNext — ログイン</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js" defer></script>
+<script src="app.js"></script>
 </head>
 <body>
 <div class="login-page">
@@ -34,7 +34,7 @@
   </div>
 </div>
 <script>
-(async function() {
+document.addEventListener('DOMContentLoaded', async () => {
   // Supabaseクライアント取得（app.jsで定義済みのsbを使用）
   // 既ログイン済みチェック
   const { data } = await sb.auth.getSession();
@@ -84,7 +84,7 @@
     await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/index.html' });
     alert('パスワードリセットメールを送信しました');
   });
-})();
+});
 
 function redirectByRole(role) {
   if (role === 'master') { location.href = 'master.html'; }
