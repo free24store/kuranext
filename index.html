@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -15,9 +16,7 @@
       <div class="mark">Kura<span>Next</span></div>
       <p>工事写真管理SaaS</p>
     </div>
-
     <div id="errMsg" style="background:#fdecea;color:var(--ng);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none;"></div>
-
     <form id="loginForm">
       <div class="form-group">
         <label class="form-label">メールアドレス</label>
@@ -27,89 +26,73 @@
         <label class="form-label">パスワード</label>
         <input id="password" type="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
       </div>
-      <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:12px;">
-        ログイン
-      </button>
+      <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:12px;">ログイン</button>
     </form>
-
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--paper3);">
-      <p style="font-size:12px;color:var(--ink3);text-align:center;margin-bottom:10px;">パスワードをお忘れの方</p>
-      <button onclick="sendReset()" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px;">
-        パスワードリセットメールを送る
-      </button>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--paper3);text-align:center;">
+      <p style="font-size:12px;color:var(--ink3);margin-bottom:10px;">パスワードをお忘れの方</p>
+      <button id="resetBtn" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px;">パスワードリセットメールを送る</button>
     </div>
   </div>
 </div>
-
 <script>
-document.addEventListener('DOMContentLoaded', async () => {
-  // 既ログイン済みチェック（profileが取得できた場合のみリダイレクト）
+(async function() {
+  // Supabaseクライアント取得（app.jsで定義済みのsbを使用）
+  // 既ログイン済みチェック
   const { data } = await sb.auth.getSession();
   if (data.session) {
-    const { data: profile } = await sb.from('profiles')
-      .select('role')
-      .eq('id', data.session.user.id)
-      .single();
-    if (profile) redirectByRole(profile.role);
-  }
-});
-
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('loginBtn');
-  btn.disabled = true;
-  btn.textContent = 'ログイン中...';
-  hideErr();
-
-  const email = document.getElementById('email').value;
-  const pw = document.getElementById('password').value;
-
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
-  if (error) {
-    showErr('メールアドレスまたはパスワードが違います');
-    btn.disabled = false;
-    btn.textContent = 'ログイン';
-    return;
+    const { data: profile } = await sb.from('profiles').select('role').eq('id', data.session.user.id).single();
+    if (profile) { redirectByRole(profile.role); return; }
   }
 
-  // profileからroleを取得してリダイレクト
-  const { data: profile } = await sb.from('profiles')
-    .select('role')
-    .eq('id', data.user.id)
-    .single();
+  document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = 'ログイン中...';
+    document.getElementById('errMsg').style.display = 'none';
 
-  if (!profile) {
-    showErr('アカウントの設定が完了していません。管理者にお問い合わせください。');
-    btn.disabled = false;
-    btn.textContent = 'ログイン';
-    await sb.auth.signOut();
-    return;
-  }
+    const email = document.getElementById('email').value;
+    const pw = document.getElementById('password').value;
+    const { data, error } = await sb.auth.signInWithPassword({ email: email, password: pw });
 
-  redirectByRole(profile.role);
-});
+    if (error) {
+      document.getElementById('errMsg').textContent = 'メールアドレスまたはパスワードが違います';
+      document.getElementById('errMsg').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'ログイン';
+      return;
+    }
+
+    const { data: profile } = await sb.from('profiles').select('role').eq('id', data.user.id).single();
+    if (!profile) {
+      document.getElementById('errMsg').textContent = 'アカウントの設定が完了していません。管理者にお問い合わせください。';
+      document.getElementById('errMsg').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'ログイン';
+      await sb.auth.signOut();
+      return;
+    }
+    redirectByRole(profile.role);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', async function() {
+    const email = document.getElementById('email').value;
+    if (!email) {
+      document.getElementById('errMsg').textContent = 'メールアドレスを入力してください';
+      document.getElementById('errMsg').style.display = 'block';
+      return;
+    }
+    await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/index.html' });
+    alert('パスワードリセットメールを送信しました');
+  });
+})();
 
 function redirectByRole(role) {
-  if (role === 'master') location.href = 'master.html';
-  else if (role === 'admin') location.href = 'admin.html';
-  else location.href = 'staff.html';
+  if (role === 'master') { location.href = 'master.html'; }
+  else if (role === 'admin') { location.href = 'admin.html'; }
+  else { location.href = 'staff.html'; }
 }
-
-async function sendReset() {
-  const email = document.getElementById('email').value;
-  if (!email) { showErr('メールアドレスを入力してください'); return; }
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: location.origin + '/index.html'
-  });
-  if (error) showErr(error.message);
-  else {
-    hideErr();
-    alert('パスワードリセットメールを送信しました');
-  }
-}
-
-function showErr(msg) { const el = document.getElementById('errMsg'); el.textContent = msg; el.style.display = 'block'; }
-function hideErr() { document.getElementById('errMsg').style.display = 'none'; }
 </script>
 </body>
 </html>
+```
